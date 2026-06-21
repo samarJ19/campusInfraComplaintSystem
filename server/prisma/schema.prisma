@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  FACULTY
+  MAINTENANCE
+  ADMIN
+}
+
+enum Department {
+  ELECTRICAL
+  WATER
+  SANITIZATION
+  INTERNET
+  INFRASTRUCTURE
+  GENERAL
+}
+
+enum ComplaintStatus {
+  PENDING_APPROVAL
+  APPROVED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+  REASSIGNMENT_REQUESTED
+}
+
+enum ValidityStatus {
+  PENDING
+  VALID
+  INVALID
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum NotificationType {
+  COMPLAINT_CREATED
+  COMPLAINT_APPROVED
+  COMPLAINT_REJECTED
+  COMPLAINT_ASSIGNED
+  COMPLAINT_IN_PROGRESS
+  COMPLAINT_RESOLVED
+  REASSIGNMENT_REQUESTED
+  REASSIGNMENT_APPROVED
+  REASSIGNMENT_REJECTED
+  GENERAL
+}
+
+enum ActivityAction {
+  COMPLAINT_CREATED
+  COMPLAINT_UPDATED
+  COMPLAINT_APPROVED
+  COMPLAINT_REJECTED
+  COMPLAINT_ASSIGNED
+  COMPLAINT_REASSIGNED
+  REASSIGNMENT_REQUESTED
+  REASSIGNMENT_APPROVED
+  REASSIGNMENT_REJECTED
+  IN_PROGRESS
+  RESOLVED
+  COMMENT_ADDED
+}
+
+enum ReassignmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                   String                @id @default(cuid())
+  name                 String
+  email                String                @unique
+  password             String
+  role                 Role
+  enrollmentNumber     String?               @unique
+  department           Department?
+  activeAssignments    Int                   @default(0)
+  
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  // Relations
+  createdComplaints    Complaint[]           @relation("ComplaintCreator")
+  assignedComplaints   Complaint[]           @relation("ComplaintAssignee")
+  reviewedComplaints   Complaint[]           @relation("ComplaintReviewer")
+  notifications        Notification[]
+  comments             Comment[]
+  activityLogs         ActivityLog[]
+  reassignmentRequests ReassignmentRequest[] @relation("RequestedBy")
+}
+
+model Complaint {
+  id                   String                @id @default(cuid())
+  title                String
+  description          String
+  imageUrl             String?
+  category             Department
+  priority             Priority              @default(MEDIUM)
+  status               ComplaintStatus       @default(PENDING_APPROVAL)
+  validityStatus       ValidityStatus        @default(PENDING)
+  feedbackRating       Int?
+  feedbackComment      String?
+  
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  resolvedAt           DateTime?
+  reviewedAt           DateTime?
+
+  // Student Relation
+  createdById          String
+  createdBy            User                  @relation("ComplaintCreator", fields: [createdById], references: [id])
+
+  // Maintenance Staff Relation
+  assignedToId         String?
+  assignedTo           User?                 @relation("ComplaintAssignee", fields: [assignedToId], references: [id])
+
+  // Faculty Reviewer Relation
+  reviewedById         String?
+  reviewedBy           User?                 @relation("ComplaintReviewer", fields: [reviewedById], references: [id])
+
+  // Sub-relations
+  comments             Comment[]
+  notifications        Notification[]
+  activityLogs         ActivityLog[]
+  reassignmentRequests ReassignmentRequest[]
+
+  @@index([status])
+  @@index([category])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([reviewedById])
+}
+
+model Comment {
+  id          String    @id @default(cuid())
+  content     String
+  createdAt   DateTime  @default(now())
+
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+}
+
+model Notification {
+  id          String     @id @default(cuid())
+  title       String
+  message     String
+  isRead      Boolean    @default(false)
+  type        NotificationType
+  createdAt   DateTime   @default(now())
+
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  complaintId String?
+  complaint   Complaint? @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model ActivityLog {
+  id          String         @id @default(cuid())
+  action      ActivityAction
+  description String
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  complaintId String
+  complaint   Complaint      @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  actorId     String
+  actor       User           @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@index([actorId])
+}
+
+model ReassignmentRequest {
+  id            String             @id @default(cuid())
+  reason        String
+  status        ReassignmentStatus @default(PENDING)
+  createdAt     DateTime           @default(now())
+
+  complaintId   String
+  complaint     Complaint          @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  requestedById String
+  requestedBy   User               @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@index([requestedById])
+}
