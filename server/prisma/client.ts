@@ -1,9 +1,3 @@
-// import { config } from 'dotenv';
-// import * as path from 'path';
-
-// Resolve .env path relative to this file to load the db package's .env
-// config({ path: path.resolve(__dirname, '../.env') }); 
-
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from 'pg';
