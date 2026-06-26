@@ -82,3 +82,121 @@ export const rejectComplaint = asyncHandler(async (req: Request, res: Response) 
     complaint,
   });
 });
+
+export const startWork = asyncHandler(
+  async (req: Request, res: Response) => {
+
+    if (!req.user) {
+      throw new AppError(
+        "Unauthorized",
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    const complaint =
+      await ComplaintService.startWork(
+        req.params.id as string,
+        req.user
+      );
+
+    res.status(200).json({
+      success: true,
+      message: "Work started successfully",
+      complaint,
+    });
+  }
+);
+
+export const resolveComplaint = asyncHandler(
+  async (req: Request, res: Response) => {
+
+    if (!req.user) {
+      throw new AppError(
+        "Unauthorized",
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    const complaint =
+      await ComplaintService.resolveComplaint(
+        req.params.id as string,
+        req.user
+      );
+
+    res.status(200).json({
+      success: true,
+      message: "Complaint resolved successfully",
+      complaint,
+    });
+  }
+);
+
+export const deleteComplaint = asyncHandler(
+  async (req: Request, res: Response) => {
+
+    if (!req.user) {
+      throw new AppError(
+        "Unauthorized",
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    await ComplaintService.deleteComplaint(
+      req.params.id as string,
+      req.user
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Complaint deleted successfully",
+    });
+  }
+);
+
+export const addComment = asyncHandler(
+  async (req: Request, res: Response) => {
+
+    if (!req.user) {
+      throw new AppError(
+        "Unauthorized",
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    const comment =
+      await ComplaintService.addComment(
+        req.params.id as string,
+        req.user,
+        req.body.content
+      );
+
+    res.status(201).json({
+      success: true,
+      message: "Comment added successfully",
+      comment,
+    });
+  }
+);
+
+export const getComments = asyncHandler(
+  async (req: Request, res: Response) => {
+
+    if (!req.user) {
+      throw new AppError(
+        "Unauthorized",
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    const comments =
+      await ComplaintService.getComments(
+        req.params.id as string,
+        req.user
+      );
+
+    res.status(200).json({
+      success: true,
+      comments,
+    });
+  }
+);

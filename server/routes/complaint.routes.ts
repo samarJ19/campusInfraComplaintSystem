@@ -7,6 +7,11 @@ import {
   getComplaintById,
   approveComplaint,
   rejectComplaint,
+  deleteComplaint,
+  getComments,
+  addComment,
+  resolveComplaint,
+  startWork,
 } from "../controllers/complaint.controller";
 
 import { authenticate } from "../middleware/auth.middleware";
@@ -30,6 +35,12 @@ router.get(
   getMyComplaints
 );
 
+router.delete(
+  "/:id",
+  authenticate,
+  deleteComplaint
+);
+
 /* ---------------- Shared ---------------- */
 
 router.get(
@@ -38,20 +49,48 @@ router.get(
   getComplaintById
 );
 
+router.post(
+  "/:id/comments",
+  authenticate,
+  addComment
+);
+
+router.get(
+  "/:id/comments",
+  authenticate,
+  getComments
+);
+
 /* ---------------- Faculty ---------------- */
 
 router.patch(
   "/:id/approve",
   authenticate,
-  authorize(Role.FACULTY),
   approveComplaint
 );
 
 router.patch(
   "/:id/reject",
   authenticate,
-  authorize(Role.FACULTY),
   rejectComplaint
+);
+
+/*
+|--------------------------------------------------------------------------
+| Maintenance
+|--------------------------------------------------------------------------
+*/
+
+router.patch(
+  "/:id/start",
+  authenticate,
+  startWork
+);
+
+router.patch(
+  "/:id/resolve",
+  authenticate,
+  resolveComplaint
 );
 
 export default router;
