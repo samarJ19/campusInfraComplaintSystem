@@ -6,8 +6,9 @@ import cors from "cors";
 import { connectDB } from "./config/db";
 
 // // Routes
-// import authRoutes from "./routes/auth.routes";
-// import complaintRoutes from "./routes/complaint.routes";
+import authRoutes from "./routes/auth.routes";
+import { errorHandler } from "./middleware/error.middleware";
+import complaintRoutes from "./routes/complaint.routes";
 // import notificationRoutes from "./routes/notification.routes";
 // import commentRoutes from "./routes/comment.routes";
 // import dashboardRoutes from "./routes/dashboard.routes";
@@ -29,7 +30,7 @@ app.use(
   cors({
     origin: process.env.CLIENT_URL,
     credentials: true,
-  })
+  }),
 );
 
 // Health Check
@@ -41,11 +42,12 @@ app.get("/", (req, res) => {
 });
 
 // // API Routes
-// app.use("/api/auth", authRoutes);
-// app.use("/api/complaints", complaintRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/complaints", complaintRoutes);
 // app.use("/api/notifications", notificationRoutes);
 // app.use("/api/comments", commentRoutes);
 // app.use("/api/dashboard", dashboardRoutes);
+app.use(errorHandler);
 
 const startServer = async () => {
   try {
@@ -54,7 +56,6 @@ const startServer = async () => {
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
-
     // initializeSocket(server);
   } catch (error) {
     console.error("Failed to start server", error);

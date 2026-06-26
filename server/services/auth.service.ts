@@ -1,14 +1,13 @@
 import bcrypt from "bcrypt";
 import { prismaClient } from "../prisma/client";
-
 import { Role } from "../generated/prisma/enums";
+import { AppError, HttpStatus } from "../errors/AppError";
 
 interface SignupInput {
   name: string;
   email: string;
   password: string;
   role: Role;
-
   enrollmentNumber?: string;
 }
 
@@ -28,15 +27,22 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new Error("User already exists");
+      throw new AppError("User already exists", HttpStatus.CONFLICT);
     }
 
     if (role === Role.STUDENT && !enrollmentNumber) {
-      throw new Error("Enrollment number is required for students");
+      throw new AppError(
+        "Enrollment number is required for students",
+        HttpStatus.BAD_REQUEST,
+      );
     }
     if (role !== Role.STUDENT) {
-      throw new Error("Only student self-registration allowed");
+      throw new AppError(
+        "Only student self-registration allowed",
+        HttpStatus.FORBIDDEN,
+      );
     }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await prismaClient.user.create({
@@ -48,6 +54,7 @@ export class AuthService {
         enrollmentNumber,
       },
     });
+
     const { password: accountPassword, ...safeUser } = user;
 
     return safeUser;
@@ -63,14 +70,15 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new Error("Invalid credentials");
+      throw new AppError("Invalid credentials", HttpStatus.UNAUTHORIZED);
     }
 
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
     if (!isPasswordCorrect) {
-      throw new Error("Invalid credentials");
+      throw new AppError("Invalid credentials", HttpStatus.UNAUTHORIZED);
     }
+
     const { password: accountPassword, ...safeUser } = user;
 
     return safeUser;
@@ -93,7 +101,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new Error("User not found");
+      throw new AppError("User not found", HttpStatus.NOT_FOUND);
     }
 
     return user;
