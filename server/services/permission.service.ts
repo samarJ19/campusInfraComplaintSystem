@@ -1,4 +1,9 @@
-import { Complaint, Role, User } from "../generated/prisma/client";
+import {
+  Complaint,
+  ComplaintStatus,
+  Role,
+  User,
+} from "../generated/prisma/client";
 import { AppError, HttpStatus } from "../errors/AppError";
 
 export class PermissionService {
@@ -113,5 +118,55 @@ export class PermissionService {
       "You cannot comment on this complaint.",
       HttpStatus.FORBIDDEN,
     );
+  }
+  static canRequestReassignment(user: User, complaint: Complaint): void {
+    if (user.role === Role.ADMIN) {
+      return;
+    }
+
+    if (user.role !== Role.MAINTENANCE) {
+      throw new AppError(
+        "Only maintenance staff can request reassignment",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    if (complaint.assignedToId !== user.id) {
+      throw new AppError(
+        "You are not assigned to this complaint",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    if (
+      complaint.status !== ComplaintStatus.ASSIGNED &&
+      complaint.status !== ComplaintStatus.IN_PROGRESS
+    ) {
+      throw new AppError(
+        "Reassignment request is not allowed for this complaint",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+  static canApproveReassignment(user: User): void {
+    if (user.role !== Role.FACULTY && user.role !== Role.ADMIN) {
+      throw new AppError(
+        "You are not authorized to approve reassignment requests",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+  static canRejectReassignment(user: User): void {
+    if (user.role !== Role.FACULTY && user.role !== Role.ADMIN) {
+      throw new AppError(
+        "You are not authorized to reject reassignment requests",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+  static canViewReassignmentRequests(user: User): void {
+    if (user.role !== Role.ADMIN && user.role !== Role.FACULTY) {
+      throw new AppError("Unauthorized", HttpStatus.FORBIDDEN);
+    }
   }
 }

@@ -83,6 +83,52 @@ export const rejectComplaint = asyncHandler(async (req: Request, res: Response) 
   });
 });
 
+export const getAssignedComplaints =
+  asyncHandler(
+    async (
+      req: Request,
+      res: Response
+    ) => {
+
+      if (!req.user) {
+        throw new AppError(
+          "Unauthorized",
+          HttpStatus.UNAUTHORIZED
+        );
+      }
+
+      const complaints =
+        await ComplaintService
+          .getAssignedComplaints(
+            req.user
+          );
+
+      res.status(200).json({
+        success: true,
+        complaints,
+      });
+    }
+  );
+
+export const getUnassignedComplaints = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.user) {
+      throw new AppError(
+        "Unauthorized",
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    const complaints =
+      await ComplaintService.getUnassignedComplaints();
+
+    res.status(200).json({
+      success: true,
+      complaints,
+    });
+  }
+);
+
 export const startWork = asyncHandler(
   async (req: Request, res: Response) => {
 

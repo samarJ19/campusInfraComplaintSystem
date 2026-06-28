@@ -12,6 +12,8 @@ import {
   addComment,
   resolveComplaint,
   startWork,
+  getAssignedComplaints,
+  getUnassignedComplaints,
 } from "../controllers/complaint.controller";
 
 import { authenticate } from "../middleware/auth.middleware";
@@ -21,59 +23,45 @@ const router = Router();
 
 /* ---------------- Student ---------------- */
 
-router.post(
-  "/",
-  authenticate,
-  authorize(Role.STUDENT),
-  createComplaint
-);
+router.post("/", authenticate, authorize(Role.STUDENT), createComplaint);
 
-router.get(
-  "/my",
-  authenticate,
-  authorize(Role.STUDENT),
-  getMyComplaints
-);
+router.get("/my", authenticate, authorize(Role.STUDENT), getMyComplaints);
 
-router.delete(
-  "/:id",
-  authenticate,
-  deleteComplaint
-);
+router.delete("/:id", authenticate, deleteComplaint);
 
 /* ---------------- Shared ---------------- */
 
-router.get(
-  "/:id",
-  authenticate,
-  getComplaintById
-);
-
-router.post(
-  "/:id/comments",
-  authenticate,
-  addComment
-);
+/*
+|--------------------------------------------------------------------------
+| Admin
+|--------------------------------------------------------------------------
+*/
 
 router.get(
-  "/:id/comments",
+  "/unassigned",
   authenticate,
-  getComments
+  authorize(Role.ADMIN),
+  getUnassignedComplaints
+);
+
+router.get("/:id", authenticate, getComplaintById);
+
+router.post("/:id/comments", authenticate, addComment);
+
+router.get("/:id/comments", authenticate, getComments);
+
+router.get(
+  "/assigned",
+  authenticate,
+  authorize(Role.MAINTENANCE, Role.ADMIN),
+  getAssignedComplaints,
 );
 
 /* ---------------- Faculty ---------------- */
 
-router.patch(
-  "/:id/approve",
-  authenticate,
-  approveComplaint
-);
+router.patch("/:id/approve", authenticate, approveComplaint);
 
-router.patch(
-  "/:id/reject",
-  authenticate,
-  rejectComplaint
-);
+router.patch("/:id/reject", authenticate, rejectComplaint);
 
 /*
 |--------------------------------------------------------------------------
@@ -81,16 +69,8 @@ router.patch(
 |--------------------------------------------------------------------------
 */
 
-router.patch(
-  "/:id/start",
-  authenticate,
-  startWork
-);
+router.patch("/:id/start", authenticate, startWork);
 
-router.patch(
-  "/:id/resolve",
-  authenticate,
-  resolveComplaint
-);
+router.patch("/:id/resolve", authenticate, resolveComplaint);
 
 export default router;
