@@ -9,9 +9,10 @@ import { connectDB } from "./config/db";
 import authRoutes from "./routes/auth.routes";
 import { errorHandler } from "./middleware/error.middleware";
 import complaintRoutes from "./routes/complaint.routes";
+import reassignmentRoutes from "./routes/reassignment.routes";
 // import notificationRoutes from "./routes/notification.routes";
 // import commentRoutes from "./routes/comment.routes";
-// import dashboardRoutes from "./routes/dashboard.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
 
 // Socket
 // import { initializeSocket } from "./socket";
@@ -44,9 +45,10 @@ app.get("/", (req, res) => {
 // // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/complaints", complaintRoutes);
+app.use("/api/reassignments", reassignmentRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 // app.use("/api/notifications", notificationRoutes);
 // app.use("/api/comments", commentRoutes);
-// app.use("/api/dashboard", dashboardRoutes);
 app.use(errorHandler);
 
 const startServer = async () => {

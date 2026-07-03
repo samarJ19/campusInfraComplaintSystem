@@ -2,6 +2,8 @@ import {
   ActivityAction,
   Complaint,
   ComplaintStatus,
+  Department,
+  NotificationType,
   ReassignmentStatus,
   Role,
   User,
@@ -12,6 +14,7 @@ import { prismaClient } from "../prisma/client";
 import { AppError, HttpStatus } from "../errors/AppError";
 import { ActivityService } from "./activity.service";
 import { PermissionService } from "./permission.service";
+import { NotificationService } from "./notification.service";
 
 export class AssignmentService {
   static async getBestAssignee(
@@ -276,5 +279,140 @@ export class AssignmentService {
     });
 
     return updatedRequest;
+  }
+
+  static async getAvailableMaintenanceStaff(
+    department: Department,
+    currentUser: User,
+  ) {
+    PermissionService.canManualAssign(currentUser);
+
+    return prismaClient.user.findMany({
+      where: {
+        role: Role.MAINTENANCE,
+
+        department,
+      },
+
+      select: {
+        id: true,
+
+        name: true,
+
+        department: true,
+
+        activeAssignments: true,
+      },
+
+      orderBy: {
+        activeAssignments: "asc",
+      },
+    });
+  }
+
+  static async manualAssignComplaint(
+    complaintId: string,
+    maintenanceId: string,
+    currentUser: User,
+  ) {
+    PermissionService.canManualAssign(currentUser);
+
+    const complaint = await prismaClient.complaint.findUnique({
+      where: {
+        id: complaintId,
+      },
+    });
+
+    if (!complaint) {
+      throw new AppError("Complaint not found", HttpStatus.NOT_FOUND);
+    }
+
+    const maintenance = await prismaClient.user.findUnique({
+      where: {
+        id: maintenanceId,
+      },
+    });
+
+    if (!maintenance) {
+      throw new AppError("Maintenance staff not found", HttpStatus.NOT_FOUND);
+    }
+
+    if (maintenance.role !== Role.MAINTENANCE) {
+      throw new AppError("Invalid maintenance staff", HttpStatus.BAD_REQUEST);
+    }
+
+    /*
+     * Remove previous assignee
+     */
+    if (complaint.assignedToId && complaint.assignedToId !== maintenanceId) {
+      await prismaClient.user.update({
+        where: {
+          id: complaint.assignedToId,
+        },
+
+        data: {
+          activeAssignments: {
+            decrement: 1,
+          },
+        },
+      });
+    }
+
+    /*
+     * Increment new assignee
+     */
+    await prismaClient.user.update({
+      where: {
+        id: maintenanceId,
+      },
+
+      data: {
+        activeAssignments: {
+          increment: 1,
+        },
+      },
+    });
+
+    const updatedComplaint = await prismaClient.complaint.update({
+      where: {
+        id: complaintId,
+      },
+
+      data: {
+        assignedToId: maintenanceId,
+
+        status: ComplaintStatus.ASSIGNED,
+      },
+    });
+
+    await ActivityService.createActivity({
+      complaintId,
+
+      actorId: currentUser.id,
+
+      action: ActivityAction.COMPLAINT_ASSIGNED,
+
+      description: `Complaint manually assigned to ${maintenance.name}`,
+
+      metadata: {
+        assignedTo: maintenance.id,
+
+        assignedBy: currentUser.id,
+      },
+    });
+
+    await NotificationService.createNotification({
+      userId: maintenance.id,
+
+      title: "Complaint Assigned",
+
+      message: "A complaint has been assigned to you.",
+
+      type: NotificationType.COMPLAINT_ASSIGNED,
+
+      complaintId,
+    });
+
+    return updatedComplaint;
   }
 }

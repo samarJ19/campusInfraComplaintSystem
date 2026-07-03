@@ -67,6 +67,24 @@ export class PermissionService {
     );
   }
 
+  static canManualAssign(
+    user: User
+): void {
+
+    if (
+        user.role !== Role.ADMIN &&
+        user.role !== Role.FACULTY
+    ) {
+
+        throw new AppError(
+            "Unauthorized",
+            HttpStatus.FORBIDDEN
+        );
+
+    }
+
+}
+
   static canStartWork(user: User, complaint: Complaint): void {
     if (user.role === Role.ADMIN) {
       return;

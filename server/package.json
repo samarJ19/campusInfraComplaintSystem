@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx watch index.ts"
+    "dev": "tsx watch index.ts",
+    "seed": "tsx prisma/seed.ts",
+    "seed-dashboard": "tsx prisma/seedDashboardData.ts"
   },
   "repository": {
     "type": "git",

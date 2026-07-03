@@ -443,55 +443,44 @@ export class ComplaintService {
 
     return;
   }
-  static async getAssignedComplaints(
-    currentUser: User
-){
+  static async getAssignedComplaints(currentUser: User) {
+    if (currentUser.role === Role.ADMIN) {
+      return prismaClient.complaint.findMany({
+        where: {
+          assignedToId: {
+            not: null,
+          },
+        },
 
-    if(currentUser.role === Role.ADMIN){
-
-        return prismaClient.complaint.findMany({
-
-            where:{
-                assignedToId:{
-                    not:null
-                }
-            },
-
-            include:{
-                assignedTo:true
-            }
-
-        });
-
+        include: {
+          assignedTo: true,
+        },
+      });
     }
 
     return prismaClient.complaint.findMany({
+      where: {
+        assignedToId: currentUser.id,
+      },
 
-        where:{
-            assignedToId:
-                currentUser.id
-        },
-
-        include:{
-            assignedTo:true
-        }
-
+      include: {
+        assignedTo: true,
+      },
     });
+  }
 
-}
+  static async getUnassignedComplaints() {
+    return prismaClient.complaint.findMany({
+      where: {
+        status: ComplaintStatus.APPROVED,
+        assignedToId: null,
+      },
 
-static async getUnassignedComplaints() {
-  return prismaClient.complaint.findMany({
-    where: {
-      status: ComplaintStatus.APPROVED,
-      assignedToId: null,
-    },
-
-    orderBy: {
-      createdAt: "desc",
-    }
-  });
-}
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
   static async addComment(
     complaintId: string,
     currentUser: User,
