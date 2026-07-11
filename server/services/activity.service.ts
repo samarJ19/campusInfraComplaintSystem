@@ -1,18 +1,18 @@
+import { Prisma } from "../generated/prisma/client";
 import { prismaClient } from "../prisma/client";
 import { CreateActivityInput } from "../types/DTO";
 
 export class ActivityService {
-  static async createActivity(data: CreateActivityInput) {
-    return prismaClient.activityLog.create({
+  static async createActivity(
+    data: CreateActivityInput,
+    tx: Prisma.TransactionClient = prismaClient
+  ) {
+    return tx.activityLog.create({
       data: {
         complaintId: data.complaintId,
-
         actorId: data.actorId,
-
         action: data.action,
-
         description: data.description,
-
         metadata: data.metadata,
       },
     });
@@ -23,7 +23,6 @@ export class ActivityService {
       where: {
         complaintId,
       },
-
       include: {
         actor: {
           select: {
@@ -33,7 +32,6 @@ export class ActivityService {
           },
         },
       },
-
       orderBy: {
         createdAt: "asc",
       },

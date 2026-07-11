@@ -34,3 +34,11 @@ export interface CreateNotificationInput {
     complaintId?: string;
 
 }
+
+export interface JoinPayload {
+
+    userId: string;
+
+    role: string;
+
+}

@@ -1,34 +1,32 @@
 import { NotificationType } from "../generated/prisma/enums";
-
+import { Prisma } from "../generated/prisma/client";
 import { prismaClient } from "../prisma/client";
+import { SocketService } from "../socket/socket.service";
 
 interface CreateNotificationInput {
   userId: string;
-
   title: string;
-
   message: string;
-
   type: NotificationType;
-
   complaintId?: string;
 }
 
 export class NotificationService {
-  static async createNotification(data: CreateNotificationInput) {
-    return prismaClient.notification.create({
+  static async createNotification(
+    data: CreateNotificationInput,
+    tx: Prisma.TransactionClient = prismaClient,
+  ) {
+    const notification = await tx.notification.create({
       data: {
         userId: data.userId,
-
         title: data.title,
-
         message: data.message,
-
         type: data.type,
-
         complaintId: data.complaintId,
       },
     });
+
+    return notification;
   }
 
   static async getNotifications(userId: string) {
@@ -36,7 +34,6 @@ export class NotificationService {
       where: {
         userId,
       },
-
       orderBy: {
         createdAt: "desc",
       },
@@ -49,7 +46,6 @@ export class NotificationService {
         id: notificationId,
         userId,
       },
-
       data: {
         isRead: true,
       },
@@ -62,7 +58,6 @@ export class NotificationService {
         userId,
         isRead: false,
       },
-
       data: {
         isRead: true,
       },

@@ -1,4 +1,5 @@
 import { prismaClient } from "../prisma/client";
+import { Prisma } from "../generated/prisma/client"; // Added to type the transaction client
 import {
   ActivityAction,
   ComplaintStatus,
@@ -13,19 +14,15 @@ import { ActivityService } from "./activity.service";
 import { CreateComplaintInput } from "../types/DTO";
 import { NotificationService } from "./notification.service";
 import { AssignmentService } from "./assignment.service";
+import { SocketService } from "../socket/socket.service";
 
 export class ComplaintService {
   static async createComplaint(studentId: string, data: CreateComplaintInput) {
     const student = await prismaClient.user.findUnique({
-      where: {
-        id: studentId,
-      },
+      where: { id: studentId },
     });
 
-    if (!student) {
-      throw new AppError("Student not found", HttpStatus.NOT_FOUND);
-    }
-
+    if (!student) throw new AppError("Student not found", HttpStatus.NOT_FOUND);
     if (student.role !== Role.STUDENT) {
       throw new AppError(
         "Only students can create complaints",
@@ -33,36 +30,53 @@ export class ComplaintService {
       );
     }
 
-    const complaint = await prismaClient.complaint.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        imageUrl: data.imageUrl,
-        category: data.category,
-        status: ComplaintStatus.PENDING_APPROVAL,
-        createdById: studentId,
-      },
+    // --- TRANSACTION START ---
+    const complaint = await prismaClient.$transaction(async (tx) => {
+      const newComplaint = await tx.complaint.create({
+        data: {
+          title: data.title,
+          description: data.description,
+          imageUrl: data.imageUrl,
+          category: data.category,
+          status: ComplaintStatus.PENDING_APPROVAL,
+          createdById: studentId,
+        },
+      });
+
+      // Note: Update ActivityService and NotificationService to accept `tx`
+      await ActivityService.createActivity(
+        {
+          complaintId: newComplaint.id,
+          actorId: studentId,
+          action: ActivityAction.COMPLAINT_CREATED,
+          description: "Complaint created",
+        },
+        tx,
+      );
+
+      await NotificationService.createNotification(
+        {
+          userId: newComplaint.createdById,
+          title: "Complaint Submitted",
+          message: "Your complaint has been submitted successfully.",
+          type: NotificationType.COMPLAINT_CREATED,
+          complaintId: newComplaint.id,
+        },
+        tx,
+      );
+
+      return newComplaint;
     });
-    await ActivityService.createActivity({
-      complaintId: complaint.id,
+    // --- TRANSACTION END ---
 
-      actorId: studentId,
-
-      action: ActivityAction.COMPLAINT_CREATED,
-
-      description: "Complaint created",
+    // Sockets execute AFTER transaction commits successfully
+    SocketService.notifyFaculty({
+      title: "New Complaint",
+      message: "A complaint is waiting for approval",
     });
-    await NotificationService.createNotification({
-      userId: complaint.createdById,
+    SocketService.refreshFacultyDashboard();
+    SocketService.refreshAdminDashboard();
 
-      title: "Complaint Submitted",
-
-      message: "Your complaint has been submitted successfully.",
-
-      type: NotificationType.COMPLAINT_CREATED,
-
-      complaintId: complaint.id,
-    });
     return complaint;
   }
 
@@ -117,129 +131,107 @@ export class ComplaintService {
 
   static async approveComplaint(complaintId: string, facultyId: string) {
     const faculty = await prismaClient.user.findUnique({
-      where: {
-        id: facultyId,
-      },
+      where: { id: facultyId },
     });
-
-    if (!faculty) {
-      throw new AppError("Faculty not found", HttpStatus.NOT_FOUND);
-    }
-
+    if (!faculty) throw new AppError("Faculty not found", HttpStatus.NOT_FOUND);
     PermissionService.canApproveComplaint(faculty);
 
     const complaint = await prismaClient.complaint.findUnique({
-      where: {
-        id: complaintId,
-      },
+      where: { id: complaintId },
     });
-
-    if (!complaint) {
+    if (!complaint)
       throw new AppError("Complaint not found", HttpStatus.NOT_FOUND);
-    }
-
     if (complaint.status !== ComplaintStatus.PENDING_APPROVAL) {
       throw new AppError("Complaint already reviewed", HttpStatus.BAD_REQUEST);
     }
 
-    /*
-     * STEP 1
-     * Faculty approves complaint
-     */
-    const approvedComplaint = await prismaClient.complaint.update({
-      where: {
-        id: complaintId,
-      },
-      data: {
-        status: ComplaintStatus.APPROVED,
-
-        validityStatus: ValidityStatus.VALID,
-
-        reviewedById: facultyId,
-
-        reviewedAt: new Date(),
-      },
-    });
-
-    /*
-     * STEP 2
-     * Activity for approval
-     */
-    await ActivityService.createActivity({
-      complaintId,
-
-      actorId: facultyId,
-
-      action: ActivityAction.COMPLAINT_APPROVED,
-
-      description: "Complaint approved",
-    });
-
-    /*
-     * STEP 3
-     * Notify student
-     */
-    await NotificationService.createNotification({
-      userId: complaint.createdById,
-
-      title: "Complaint Approved",
-
-      message: "Your complaint has been approved.",
-
-      type: NotificationType.COMPLAINT_APPROVED,
-
-      complaintId,
-    });
-
-    /*
-     * STEP 4
-     * Auto Assignment
-     */
-    try {
-      const { complaint: assignedComplaint, assignee } =
-        await AssignmentService.autoAssignComplaint(complaintId);
-
-      /*
-       * STEP 5
-       * Activity for assignment
-       */
-      await ActivityService.createActivity({
-        complaintId,
-
-        actorId: facultyId,
-
-        action: ActivityAction.COMPLAINT_ASSIGNED,
-
-        description: `Complaint assigned to ${assignee.name}`,
-
-        metadata: {
-          assignedTo: assignedComplaint.assignedToId,
+    // --- TRANSACTION START ---
+    const result = await prismaClient.$transaction(async (tx) => {
+      const approvedComplaint = await tx.complaint.update({
+        where: { id: complaintId },
+        data: {
+          status: ComplaintStatus.APPROVED,
+          validityStatus: ValidityStatus.VALID,
+          reviewedById: facultyId,
+          reviewedAt: new Date(),
         },
       });
 
-      /*
-       * STEP 6
-       * Notify maintenance staff
-       */
-      await NotificationService.createNotification({
-        userId: assignedComplaint.assignedToId!,
+      await ActivityService.createActivity(
+        {
+          complaintId,
+          actorId: facultyId,
+          action: ActivityAction.COMPLAINT_APPROVED,
+          description: "Complaint approved",
+        },
+        tx,
+      );
 
-        title: "New Complaint Assigned",
+      await NotificationService.createNotification(
+        {
+          userId: complaint.createdById,
+          title: "Complaint Approved",
+          message: "Your complaint has been approved.",
+          type: NotificationType.COMPLAINT_APPROVED,
+          complaintId,
+        },
+        tx,
+      );
 
-        message: "A new complaint has been assigned to you.",
+      try {
+        // Pass tx into AssignmentService
+        const { complaint: assignedComplaint, assignee } =
+          await AssignmentService.autoAssignComplaint(complaintId, tx);
 
-        type: NotificationType.COMPLAINT_ASSIGNED,
+        await ActivityService.createActivity(
+          {
+            complaintId,
+            actorId: facultyId,
+            action: ActivityAction.COMPLAINT_ASSIGNED,
+            description: `Complaint assigned to ${assignee.name}`,
+            metadata: { assignedTo: assignedComplaint.assignedToId },
+          },
+          tx,
+        );
 
-        complaintId,
-      });
+        await NotificationService.createNotification(
+          {
+            userId: assignedComplaint.assignedToId!,
+            title: "New Complaint Assigned",
+            message: "A new complaint has been assigned to you.",
+            type: NotificationType.COMPLAINT_ASSIGNED,
+            complaintId,
+          },
+          tx,
+        );
 
-      return assignedComplaint;
-    } catch (error) {
-      /*
-       * No maintenance staff available.
-       * Complaint remains APPROVED.
-       */
-      return approvedComplaint;
+        return { assignedComplaint, assignee, isAssigned: true };
+      } catch (error) {
+        return { approvedComplaint, isAssigned: false };
+      }
+    });
+    // --- TRANSACTION END ---
+
+    // Execute side-effects based on transaction result
+    if (result.isAssigned) {
+      SocketService.notifyMaintenance(
+        result.assignee!.id,
+        NotificationType.COMPLAINT_ASSIGNED,
+      );
+      SocketService.refreshMaintenanceDashboard(result.assignee!.id);
+      SocketService.notifyStudent(
+        complaint.createdById,
+        NotificationType.COMPLAINT_ASSIGNED,
+      );
+      SocketService.refreshStudentDashboard(complaint.createdById);
+      SocketService.refreshStudentComplaint(
+        complaint.createdById,
+        complaint.id,
+      );
+      SocketService.refreshAdminDashboard();
+      return result.assignedComplaint;
+    } else {
+      return result.approvedComplaint;
     }
   }
 
@@ -270,37 +262,41 @@ export class ComplaintService {
       throw new AppError("Complaint already reviewed", HttpStatus.BAD_REQUEST);
     }
 
-    const updatedComplaint = await prismaClient.complaint.update({
-      where: {
-        id: complaintId,
-      },
-      data: {
-        status: ComplaintStatus.REJECTED,
-        validityStatus: ValidityStatus.INVALID,
-        reviewedById: facultyId,
-        reviewedAt: new Date(),
-      },
+    const updatedComplaint = await prismaClient.$transaction(async (tx) => {
+      const complaintRes = await tx.complaint.update({
+        where: { id: complaintId },
+        data: {
+          status: ComplaintStatus.REJECTED,
+          validityStatus: ValidityStatus.INVALID,
+          reviewedById: facultyId,
+          reviewedAt: new Date(),
+        },
+      });
+
+      await ActivityService.createActivity(
+        {
+          complaintId,
+          actorId: facultyId,
+          action: ActivityAction.COMPLAINT_REJECTED,
+          description: "Complaint rejected",
+        },
+        tx,
+      );
+
+      await NotificationService.createNotification(
+        {
+          userId: complaintRes.createdById,
+          title: "Complaint Rejected",
+          message: "Your complaint was rejected.",
+          type: NotificationType.COMPLAINT_REJECTED,
+          complaintId,
+        },
+        tx,
+      );
+
+      return complaintRes;
     });
-    await ActivityService.createActivity({
-      complaintId,
 
-      actorId: facultyId,
-
-      action: ActivityAction.COMPLAINT_REJECTED,
-
-      description: "Complaint rejected",
-    });
-    await NotificationService.createNotification({
-      userId: complaint.createdById,
-
-      title: "Complaint Rejected",
-
-      message: "Your complaint was rejected.",
-
-      type: NotificationType.COMPLAINT_REJECTED,
-
-      complaintId,
-    });
     return updatedComplaint;
   }
 
@@ -320,34 +316,35 @@ export class ComplaintService {
     if (complaint.status !== ComplaintStatus.ASSIGNED) {
       throw new AppError("Complaint is not assigned.", HttpStatus.BAD_REQUEST);
     }
-    await ActivityService.createActivity({
-      complaintId,
+    const updatedComplaint = await prismaClient.$transaction(async (tx) => {
+      await ActivityService.createActivity(
+        {
+          complaintId,
+          actorId: currentUser.id,
+          action: ActivityAction.IN_PROGRESS,
+          description: "Maintenance started working",
+        },
+        tx,
+      );
 
-      actorId: currentUser.id,
+      await NotificationService.createNotification(
+        {
+          userId: complaint.createdById,
+          title: "Work Started",
+          message: "Maintenance staff has started working on your complaint.",
+          type: NotificationType.COMPLAINT_IN_PROGRESS,
+          complaintId,
+        },
+        tx,
+      );
 
-      action: ActivityAction.IN_PROGRESS,
-
-      description: "Maintenance started working",
+      return tx.complaint.update({
+        where: { id: complaintId },
+        data: { status: ComplaintStatus.IN_PROGRESS },
+      });
     });
-    await NotificationService.createNotification({
-      userId: complaint.createdById,
 
-      title: "Work Started",
-
-      message: "Maintenance staff has started working on your complaint.",
-
-      type: NotificationType.COMPLAINT_IN_PROGRESS,
-
-      complaintId,
-    });
-    return prismaClient.complaint.update({
-      where: {
-        id: complaintId,
-      },
-      data: {
-        status: ComplaintStatus.IN_PROGRESS,
-      },
-    });
+    return updatedComplaint;
   }
 
   static async resolveComplaint(complaintId: string, currentUser: User) {
@@ -369,47 +366,54 @@ export class ComplaintService {
         HttpStatus.BAD_REQUEST,
       );
     }
-    await ActivityService.createActivity({
-      complaintId,
-
-      actorId: currentUser.id,
-
-      action: ActivityAction.RESOLVED,
-
-      description: "Complaint resolved",
-    });
-    await NotificationService.createNotification({
-      userId: complaint.createdById,
-
-      title: "Complaint Resolved",
-
-      message: "Your complaint has been resolved.",
-
-      type: NotificationType.COMPLAINT_RESOLVED,
-
-      complaintId,
-    });
-    if (complaint.assignedToId) {
-      await prismaClient.user.update({
-        where: {
-          id: complaint.assignedToId,
+    const resolvedComplaint = await prismaClient.$transaction(async (tx) => {
+      await ActivityService.createActivity(
+        {
+          complaintId,
+          actorId: currentUser.id,
+          action: ActivityAction.RESOLVED,
+          description: "Complaint resolved",
         },
+        tx,
+      );
+
+      await NotificationService.createNotification(
+        {
+          userId: complaint.createdById,
+          title: "Complaint Resolved",
+          message: "Your complaint has been resolved.",
+          type: NotificationType.COMPLAINT_RESOLVED,
+          complaintId,
+        },
+        tx,
+      );
+
+      if (complaint.assignedToId) {
+        await tx.user.update({
+          where: { id: complaint.assignedToId },
+          data: { activeAssignments: { decrement: 1 } },
+        });
+      }
+
+      return tx.complaint.update({
+        where: { id: complaintId },
         data: {
-          activeAssignments: {
-            decrement: 1,
-          },
+          status: ComplaintStatus.RESOLVED,
+          resolvedAt: new Date(),
         },
       });
-    }
-    return prismaClient.complaint.update({
-      where: {
-        id: complaintId,
-      },
-      data: {
-        status: ComplaintStatus.RESOLVED,
-        resolvedAt: new Date(),
-      },
     });
+
+    // Sockets execute AFTER transaction
+    SocketService.notifyStudent(
+      complaint.createdById,
+      NotificationType.COMPLAINT_RESOLVED,
+    );
+    SocketService.refreshStudentDashboard(complaint.createdById);
+    SocketService.refreshMaintenanceDashboard(complaint.assignedToId!);
+    SocketService.refreshAdminDashboard();
+
+    return resolvedComplaint;
   }
 
   static async deleteComplaint(complaintId: string, currentUser: User) {
@@ -497,26 +501,29 @@ export class ComplaintService {
     }
 
     PermissionService.canComment(currentUser, complaint);
-    const comment = await prismaClient.comment.create({
-      data: {
-        content,
-        complaintId,
-        userId: currentUser.id,
-      },
+    const comment = await prismaClient.$transaction(async (tx) => {
+      const newComment = await tx.comment.create({
+        data: {
+          content,
+          complaintId,
+          userId: currentUser.id,
+        },
+      });
+
+      await ActivityService.createActivity(
+        {
+          complaintId,
+          actorId: currentUser.id,
+          action: ActivityAction.COMMENT_ADDED,
+          description: "Comment added",
+          metadata: { commentId: newComment.id },
+        },
+        tx,
+      );
+
+      return newComment;
     });
-    await ActivityService.createActivity({
-      complaintId,
 
-      actorId: currentUser.id,
-
-      action: ActivityAction.COMMENT_ADDED,
-
-      description: "Comment added",
-
-      metadata: {
-        commentId: comment.id,
-      },
-    });
     return comment;
   }
 

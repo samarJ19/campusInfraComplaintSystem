@@ -13,9 +13,9 @@ import reassignmentRoutes from "./routes/reassignment.routes";
 // import notificationRoutes from "./routes/notification.routes";
 // import commentRoutes from "./routes/comment.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import http from "http";
+import { initializeSocket } from "./socket/socket";
 
-// Socket
-// import { initializeSocket } from "./socket";
 
 dotenv.config();
 
@@ -55,10 +55,14 @@ const startServer = async () => {
   try {
     await connectDB();
 
-    const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+
+    const server = http.createServer(app);
+
+    initializeSocket(server);
+
+    server.listen(PORT, () => {
+      console.log("Server running");
     });
-    // initializeSocket(server);
   } catch (error) {
     console.error("Failed to start server", error);
     process.exit(1);

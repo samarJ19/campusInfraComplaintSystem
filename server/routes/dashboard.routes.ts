@@ -10,6 +10,7 @@ import { getStudentDashboard } from "../controllers/student.dashboard.controller
 
 import { getAdminDashboard } from "../controllers/admin.dashboard.controller";
 import { getFacultyDashboard } from "../controllers/faculty.dashboard.conttroller";
+import { getMaintenanceDashboard } from "../controllers/maintenance.controller";
 
 const router = Router();
 
@@ -59,6 +60,22 @@ router.get(
   authorize(Role.FACULTY),
 
   getFacultyDashboard,
+);
+
+/*
+|--------------------------------------------------------------------------
+| Faculty Dashboard
+|--------------------------------------------------------------------------
+*/
+
+router.get(
+  "/maintenance",
+
+  authenticate,
+
+  authorize(Role.MAINTENANCE),
+
+  getMaintenanceDashboard,
 );
 
 export default router;
